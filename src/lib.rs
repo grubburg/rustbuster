@@ -1,5 +1,11 @@
+
 use clap::{Arg, App, ArgMatches};
 use std::process;
+use std::fs;
+use std::error::Error;
+use std::io::Read;
+
+
 
 pub struct Config {
     pub url:         String,
@@ -54,3 +60,20 @@ pub fn config_from_args() -> Result<Config, &'static str> {
     Ok(config)    
 }
 
+
+pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+   
+    let wordlist = fs::read_to_string(config.wordlist)?;
+
+    for line in wordlist.lines() {
+   
+        let path = format!("{}/{}", config.url, line);
+
+        let mut res = reqwest::blocking::get(&path)?;
+        println!("{}", res.status());
+
+
+    }
+    println!("{}", config.url);
+    Ok(())
+}

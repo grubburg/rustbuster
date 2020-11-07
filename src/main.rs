@@ -1,6 +1,13 @@
+use std::process;
+
 
 fn main() {
 
     let config = rustbuster::config_from_args().unwrap();
-    println!("{}", config.url);
+
+    if let Err(e) = rustbuster::run(config) {
+        eprintln!("Application Error: {}", e);
+        process::exit(1);
+    }
+
 }
