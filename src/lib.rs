@@ -4,7 +4,7 @@ use std::process;
 pub struct Config {
     pub url:         String,
     pub wordlist:    String,
-    //pub num_threads: u8
+    pub threads: u32
 }
 
 
@@ -19,7 +19,11 @@ impl Config {
             Some(arg) => String::from(arg),
             None => return Err("missing wordlist")
         };
-        Ok( Config { url, wordlist } )
+        let threads = match args.value_of("threads") {
+            Some(arg) => arg.parse::<u32>().unwrap(),
+            None => 4
+        };
+        Ok( Config { url, wordlist, threads } )
 
     }
 }
@@ -36,6 +40,11 @@ pub fn config_from_args() -> Result<Config, &'static str> {
              .long("wordlist")
              .takes_value(true)
              .help("Wordlist to feed"))
+        .arg(Arg::with_name("threads")
+             .short("t")
+             .long("threads")
+             .takes_value(true)
+             .help("Number of threads (default 4)"))
         .get_matches();
 
     let config = Config::new(args).unwrap_or_else(|err| {
