@@ -14,17 +14,21 @@ type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     id: usize, 
-    thread: thread::JoinHandle<()>,
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) 
+        -> Worker {
         let thread = thread::spawn(move || loop {
             let job = receiver.lock().unwrap().recv().unwrap();
             job();
         });
 
-        Worker{id, thread}
+        Worker{
+            id, 
+            thread: Some(thread),
+        }
     }
 }
 pub struct ThreadPool {
@@ -57,8 +61,21 @@ impl ThreadPool {
             self.sender.send(job).unwrap();            
         }
 
-
 }
+
+impl Drop for ThreadPool {
+    fn drop (&mut self) {
+        for worker in &mut self.workers {
+            
+            if let Some(thread)  = worker.thread.take() {
+
+                thread.join().unwrap();
+        
+            }
+        }
+    }
+}
+
 
 pub struct Config {
     pub url:         String,
@@ -130,8 +147,10 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
              
 
             let res = reqwest::blocking::get(&path).unwrap();
+
+
             println!("{}", res.status());
-            //println!("test");
+            
         });
        
     }
