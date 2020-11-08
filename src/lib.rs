@@ -1,16 +1,69 @@
-
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
 use clap::{Arg, App, ArgMatches};
 use std::process;
 use std::fs;
 use std::error::Error;
-use std::io::Read;
+use std::cmp::min;
+use std::sync::mpsc;
 
 
+type Job = Box<dyn FnOnce() + Send + 'static>;
+
+
+struct Worker {
+    id: usize, 
+    thread: thread::JoinHandle<()>,
+}
+
+impl Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+        let thread = thread::spawn(move || loop {
+            let job = receiver.lock().unwrap().recv().unwrap();
+            job();
+        });
+
+        Worker{id, thread}
+    }
+}
+pub struct ThreadPool {
+    workers: Vec<Worker>,
+    sender: mpsc::Sender<Job>,
+}
+
+impl ThreadPool {
+    pub fn new(size: usize) -> ThreadPool {
+        assert!(size > 0);
+
+        let (sender, receiver) = mpsc::channel();
+
+        let receiver = Arc::new(Mutex::new(receiver));
+
+        let mut workers = Vec::with_capacity(size);
+
+        for id in 0..size {
+            workers.push(Worker::new(id, Arc::clone(&receiver)));
+        }
+       ThreadPool { workers, sender }
+    }
+
+    pub fn execute<F>(&self, f: F)
+        where
+            F: FnOnce() + Send + 'static,
+        {
+            let job = Box::new(f);
+
+            self.sender.send(job).unwrap();            
+        }
+
+
+}
 
 pub struct Config {
     pub url:         String,
     pub wordlist:    String,
-    pub threads: u32
+    pub threads:     usize 
 }
 
 
@@ -26,7 +79,7 @@ impl Config {
             None => return Err("missing wordlist")
         };
         let threads = match args.value_of("threads") {
-            Some(arg) => arg.parse::<u32>().unwrap(),
+            Some(arg) => arg.parse::<usize>().unwrap(),
             None => 4
         };
         Ok( Config { url, wordlist, threads } )
@@ -65,15 +118,23 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
    
     let wordlist = fs::read_to_string(config.wordlist)?;
 
+    let pool = ThreadPool::new(config.threads); 
+
+
     for line in wordlist.lines() {
    
         let path = format!("{}/{}", config.url, line);
+        
+        let thread_path = path.clone();
+        pool.execute( move || {
+             
 
-        let mut res = reqwest::blocking::get(&path)?;
-        println!("{}", res.status());
-
-
+            let res = reqwest::blocking::get(&path).unwrap();
+            println!("{}", res.status());
+            //println!("test");
+        });
+       
     }
-    println!("{}", config.url);
+
     Ok(())
 }
