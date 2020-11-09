@@ -169,8 +169,11 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
             let res = reqwest::blocking::get(&path).unwrap();
 
-
-            println!("{}", res.status());
+            if res.status() == reqwest::StatusCode::OK {
+                println!("{}", path);
+            }
+           // println!("{}", res.status());
+            
             
         });
        
