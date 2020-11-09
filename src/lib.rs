@@ -16,15 +16,12 @@ enum Message {
 }
 
 
-
-
 struct Worker {
-    id: usize, 
     thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) 
+    fn new(receiver: Arc<Mutex<mpsc::Receiver<Message>>>) 
         -> Worker {
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
@@ -36,14 +33,10 @@ impl Worker {
                 Message::Terminate => {
                     break;
                 }
-            }
-
-
-           
+            }           
         });
 
         Worker{
-            id, 
             thread: Some(thread),
         }
     }
@@ -63,8 +56,8 @@ impl ThreadPool {
 
         let mut workers = Vec::with_capacity(size);
 
-        for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+        for _ in 0..size {
+            workers.push(Worker::new(Arc::clone(&receiver)));
         }
        ThreadPool { workers, sender }
     }
@@ -75,7 +68,9 @@ impl ThreadPool {
         {
             let job = Box::new(f);
 
-            self.sender.send(Message::NewJob(job)).unwrap();            
+            self.sender
+                .send(Message::NewJob(job))
+                .unwrap();            
         }
 
 }
@@ -84,7 +79,9 @@ impl Drop for ThreadPool {
     fn drop (&mut self) {
 
         for _ in &self.workers {
-            self.sender.send(Message::Terminate).unwrap();
+            self.sender
+                .send(Message::Terminate)
+                .unwrap();
         }
 
         for worker in &mut self.workers {
@@ -159,25 +156,18 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
     let pool = ThreadPool::new(config.threads); 
 
-
     for line in wordlist.lines() {
    
         let path = format!("{}/{}", config.url, line);
         
         pool.execute( move || {
              
-
             let res = reqwest::blocking::get(&path).unwrap();
 
             if res.status() == reqwest::StatusCode::OK {
                 println!("{}", path);
-            }
-           // println!("{}", res.status());
-            
-            
+            }    
         });
-       
     }
-
     Ok(())
 }
