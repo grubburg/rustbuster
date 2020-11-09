@@ -5,11 +5,17 @@ use clap::{Arg, App, ArgMatches};
 use std::process;
 use std::fs;
 use std::error::Error;
-use std::cmp::min;
 use std::sync::mpsc;
 
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
+
+enum Message {
+    NewJob(Job),
+    Terminate,
+}
+
+
 
 
 struct Worker {
@@ -18,11 +24,22 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) 
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) 
         -> Worker {
         let thread = thread::spawn(move || loop {
-            let job = receiver.lock().unwrap().recv().unwrap();
-            job();
+            let message = receiver.lock().unwrap().recv().unwrap();
+            
+            match message {
+                Message::NewJob(job) => {
+                    job();
+                }
+                Message::Terminate => {
+                    break;
+                }
+            }
+
+
+           
         });
 
         Worker{
@@ -33,7 +50,7 @@ impl Worker {
 }
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: mpsc::Sender<Message>,
 }
 
 impl ThreadPool {
@@ -58,13 +75,18 @@ impl ThreadPool {
         {
             let job = Box::new(f);
 
-            self.sender.send(job).unwrap();            
+            self.sender.send(Message::NewJob(job)).unwrap();            
         }
 
 }
 
 impl Drop for ThreadPool {
     fn drop (&mut self) {
+
+        for _ in &self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
         for worker in &mut self.workers {
             
             if let Some(thread)  = worker.thread.take() {
@@ -142,7 +164,6 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
    
         let path = format!("{}/{}", config.url, line);
         
-        let thread_path = path.clone();
         pool.execute( move || {
              
 
